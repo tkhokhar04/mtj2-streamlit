@@ -1,3 +1,5 @@
+# v3 – GDS Itinerary → MTJ Converter with banner + NDC toggle
+
 import re
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any
@@ -7,6 +9,37 @@ import streamlit as st
 # Time patterns
 TIME_WITH_AP = re.compile(r'^\d{3,4}[AP]$', re.IGNORECASE)      # 531P, 834P
 TIME_PLAIN   = re.compile(r'^(\d{4})(\+1)?$', re.IGNORECASE)    # 1250, 1914, 1115+1
+
+NDC_XML = (
+    'XMLREQUEST <ExpediaRequest><ConfigurationVariables>'
+    '<ConfigVar name="BFSQIBNDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQAFKLGroupNDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQHANDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQAANDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQBANDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQACNDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQA3NDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailSN" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailMiscCxrs" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailLX" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailKL" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailBA" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailAF" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailHA" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailAA" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailLH" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailAC" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailA3" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailOS" value="1" />'
+    '<ConfigVar name="BFSQDirectConnectAvailIB" value="1" />'
+    ' <ConfigVar name="BFSQLHGroupNDCEnabled" value="1" />'
+    '<ConfigVar name="BFSQDownlevelControlMask" value="1" />'
+    '</ConfigurationVariables><CRSDefaults><NDC>'
+    '<CRS CRSID="40" CARRIERS="AF,KL,BA,IB,AC"/>'
+    '<CRS CRSID="41" CARRIERS="AA,LH,OS,LX,SN,HA,A3"/>'
+    '</NDC><SHOPPING><CRS CRSID="7" CARRIERS="$$"/></SHOPPING>'
+    '</CRSDefaults></ExpediaRequest>'
+)
 
 def parse_time_12h(token: str) -> str:
     """Convert '531P' / '1048A' -> 'HH:MM' 24h."""
@@ -191,6 +224,7 @@ def build_mtj_from_segments(
     ptcs: str,
     gds: str,
     xpf: str,
+    ndc_enabled: bool,
 ) -> str:
     """
     Build MTJ like:
@@ -203,6 +237,7 @@ def build_mtj_from_segments(
     TMA 0 (...)
     [TMA 1 (...)]
     CI <TMA indices>
+    [XMLREQUEST ...] (if ndc_enabled)
     GDS 1A
     XPF 30 0
     """
@@ -280,6 +315,11 @@ def build_mtj_from_segments(
         ci_line = "CI 0"
 
     lines.append(ci_line)
+
+    # Optional NDC XML between CI and GDS
+    if ndc_enabled:
+        lines.append(NDC_XML)
+
     lines.append(f"GDS {gds}")
     lines.append(f"XPF {xpf} 0")
 
@@ -319,6 +359,8 @@ def main():
                 help="30=all fares,1=pub,2=package,4=net,8=WL,16=web",
             )
 
+        ndc_enabled = st.checkbox("NDC (add XMLREQUEST block)", value=False)
+
         submitted = st.form_submit_button("Generate MTJ")
 
     if not submitted:
@@ -337,6 +379,7 @@ def main():
             ptcs=ptcs,
             gds=gds,
             xpf=xpf,
+            ndc_enabled=ndc_enabled,
         )
     except Exception as e:
         st.error(f"Error: {e}")
